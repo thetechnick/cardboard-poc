@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	"cardboard.package-operator.run/internal/filewatch"
@@ -39,7 +41,8 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
 	// 1. Read config
-	ctx := context.Background()
+	ctx := SetupSignalHandler()
+
 	// 2. Ensure Cluster
 	spin, _ := pterm.DefaultSpinner.Start(
 		"ensuring kind cluster...")
@@ -72,7 +75,6 @@ func main() {
 		if err := watcher.Add("."); err != nil {
 			panic(err)
 		}
-		pterm.Info.Println("waiting for file changes...")
 
 		q := filewatch.NewWorkQueue(watcher, func(ctx context.Context) error {
 			if err := do(ctx, env); err != nil {
@@ -81,6 +83,7 @@ func main() {
 			pterm.Info.Println("waiting for file changes...")
 			return nil
 		})
+		pterm.Info.Println("waiting for file changes...")
 		if err := q.Run(ctx); err != nil {
 			panic(err)
 		}
@@ -494,4 +497,21 @@ func ensureObj(
 		return fmt.Errorf("ensuring PersistentVolumeClaim: %w", err)
 	}
 	return nil
+}
+
+var shutdownSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
+
+func SetupSignalHandler() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, shutdownSignals...)
+	go func() {
+		<-c
+		cancel()
+		<-c
+		os.Exit(1) // second signal. Exit directly.
+	}()
+
+	return ctx
 }

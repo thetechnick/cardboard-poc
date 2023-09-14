@@ -51,11 +51,13 @@ func (w *WatchWorkQueue) Run(ctx context.Context) error {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return nil
+
 		case <-debounceCh(
 			w.watcher.Events(), watchDebounceTime):
 			w.queue.Add(empty{})
 
-			return nil
 		case err := <-w.watcher.Errors():
 			return fmt.Errorf("watcher error: %w", err)
 
