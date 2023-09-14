@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cardboard-gocache
+  labels:
+    type: local
+    cardboard.package-operator.run/volume: "go-cache"
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteMany
+  hostPath:
+    path: "/tmp/cardboard-gocache"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cardboard-gocache
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      type: local
+      cardboard.package-operator.run/volume: "go-cache"
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: cardboard-build
+spec:
+  workspaces:
+  - name: source
+    description: The project source must be present in this Workspace.
+  params:
+  - name: IMAGE
+    description: Reference of the image buildah will produce.
+    default: dev-registry.dev-registry:5001/package-operator/cardboard:v1
+  # - name: package
+  #   description: base package to build in
+  steps:
+  - name: go-build
+    image: golang:1.21
+    workingDir: $(workspaces.source.path)
+    script: |
+      #!/bin/sh
+      go build -v -o bin/cardboard ./cmd/cardboard
+    volumeMounts:
+    - name: gocache
+      mountPath: /var/gocache
+    env:
+    # - name: GOOS
+    #   value: "$(params.GOOS)"
+    # - name: GOARCH
+    #   value: "$(params.GOARCH)"
+    # - name: GO111MODULE
+    #   value: "$(params.GO111MODULE)"
+    - name: GOCACHE
+      value: "/var/gocache/cache"
+    - name: GOMODCACHE
+      value: "/var/gocache/modcache"
+    - name: CGO_ENABLED
+      value: "0"
+    # - name: GOSUMDB
+    #   value: "$(params.GOSUMDB)"
+
+  - name: container-build
+    image: quay.io/buildah/stable:v1.23.3
+    workingDir: $(workspaces.source.path)
+    script: |
+      #!/bin/sh
+      buildah build --storage-driver=overlay \
+      -t $(params.IMAGE) -f config/images/cardboard.Containerfile .
+
+      buildah push --tls-verify=false --storage-driver=overlay \
+      $(params.IMAGE) \
+      docker://$(params.IMAGE)
+
+  volumes:
+  - name: gocache
+    persistentVolumeClaim:
+      claimName: cardboard-gocache
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: cardboard
+spec:
+  workspaces:
+  - name: source
+  tasks:
+  - name: build-cardboard
+    taskRef: 
+      name: cardboard-build
+    workspaces:
+    - name: source
+      workspace: source

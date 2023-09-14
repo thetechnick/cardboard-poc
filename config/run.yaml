@@ -1,0 +1,11 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: cardboard-build-001
+spec:
+  pipelineRef:
+    name: cardboard
+  workspaces:
+  - name: source
+    persistentVolumeClaim:
+      claimName: cardboard-workdir
