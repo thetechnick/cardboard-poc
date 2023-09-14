@@ -392,20 +392,7 @@ func buildAndPush() error {
 	if err != nil {
 		return err
 	}
-
-	// tags := []string{"localhost:5001/src:v1"}
-
 	return crane.Push(image, "localhost:5001/src:v1", crane.Insecure)
-
-	// m := map[string]v1.Image{}
-	// for _, tag := range tags {
-	// 	m[tag] = image
-	// }
-	// if err := crane.MultiSave(m, path); err != nil {
-	// 	return fmt.Errorf("dump to %s: %w", path, err)
-	// }
-
-	// return nil
 }
 
 func image(files map[string][]byte) (v1.Image, error) {
