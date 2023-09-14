@@ -23,7 +23,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -62,7 +63,7 @@ func main() {
 
 	// Watcher?
 	if needsToWatch != nil && *needsToWatch {
-		watcher, err := filewatch.NewWatcher()
+		watcher, err := filewatch.NewRecursiveWatcher()
 		if err != nil {
 			panic(err)
 		}
@@ -71,9 +72,14 @@ func main() {
 		if err := watcher.Add("."); err != nil {
 			panic(err)
 		}
+		pterm.Info.Println("waiting for file changes...")
 
-		q := filewatch.NewWatchWorkQueue(watcher, func(ctx context.Context) error {
-			return do(ctx, env)
+		q := filewatch.NewWorkQueue(watcher, func(ctx context.Context) error {
+			if err := do(ctx, env); err != nil {
+				return err
+			}
+			pterm.Info.Println("waiting for file changes...")
+			return nil
 		})
 		if err := q.Run(ctx); err != nil {
 			panic(err)
@@ -298,7 +304,7 @@ func ensureCardboard(ctx context.Context, c client.Client) error {
 			Namespace: cardboardNS.Name,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
-			StorageClassName: pointer.String("manual"),
+			StorageClassName: ptr.To("manual"),
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: resource.MustParse("1Gi"),
